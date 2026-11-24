@@ -57,10 +57,11 @@ test("maxHops lets one rule take a longer chain; the others keep eight", () => {
   assert.ok(rows(w.view, "cards").some((c) => c.text.includes("12")));
 });
 
-test("an event a round sends names that round's conversation, and the next round sees it", () => {
+test("with emitsSession, an event a round sends names that round's conversation, and the next round sees it", () => {
   const w = new World();
   const r = structuredClone(rules);
   r.rules[0].emits = { source: "app", types: ["two"] };
+  r.rules[0].emitsSession = true;
   w.call("rules", r);
   w.call("ingest", "app", { id: "start", type: "one", subject: "s1" });
   const job = w.call("claimNext", "w1", "c");
@@ -72,6 +73,22 @@ test("an event a round sends names that round's conversation, and the next round
   assert.deepEqual(checkSchema("context-event", next.context.events[0]), []);
 });
 
+test("without emitsSession a dispatched event that names no session starts a new conversation", () => {
+  // The bug of 2026-11-24: Agent0's task for a new conversation went on in Agent0's own conversation.
+  const w = new World();
+  const r = structuredClone(rules);
+  r.rules[0].emits = { source: "app", types: ["two"] };
+  r.rules[1].sessionFromEvent = true;
+  w.call("rules", r);
+  w.call("ingest", "app", { id: "start", type: "one", subject: "s1" });
+  const job = w.call("claimNext", "w1", "c");
+  w.call("started", job.run, job.token, { session: SESSION });
+  w.call("finish", job.run, job.token, { outcome: "done", events: [{ id: "task", type: "two", subject: "s2" }] });
+  assert.equal(rows(w.view, "events").find((e) => e.key === "task")!.session, undefined);
+  const worker = w.call("claimNext", "w2", "d");
+  assert.equal(worker.session, null);
+});
+
 test("rules check: maxHops is 1 to 64, sessionFromEvent a boolean", () => {
   const base = JSON.parse(JSON.stringify({
     timezone: "UTC",
@@ -81,6 +98,6 @@ test("rules check: maxHops is 1 to 64, sessionFromEvent a boolean", () => {
   }));
   const with_ = (extra: object) => JSON.stringify({ ...base, rules: [{ ...base.rules[0], ...extra }] });
   assert.equal(parseRules(with_({ maxHops: 64, sessionFromEvent: true }), 0, "UTC").rules[0].maxHops, 64);
-  for (const extra of [{ maxHops: 0 }, { maxHops: 65 }, { maxHops: 2.5 }, { sessionFromEvent: "yes" }])
+  for (const extra of [{ maxHops: 0 }, { maxHops: 65 }, { maxHops: 2.5 }, { sessionFromEvent: "yes" }, { emitsSession: 1 }])
     assert.throws(() => parseRules(with_(extra), 0, "UTC"));
 });

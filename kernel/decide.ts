@@ -530,10 +530,13 @@ function applyReceipt(draft: Draft, run: Row, result: Result) {
   const emitted: number[] = [];
   for (const event of result.events ?? []) {
     if (rule?.emits && typeMatches(rule.emits.types, event.type)) {
-      // CodeHub fork: an event a round sends names that round's conversation unless it names another, so whoever
-      // takes it can send work back to the same conversation.
+      // CodeHub fork: with emitsSession, an event a round sends names that round's conversation unless it names
+      // another, so whoever takes it can send work back to the same conversation (a worker's report). Without it only
+      // a session the event names itself goes along: a dispatcher's task that names none must start a new one.
       // Only a session in the form an event may carry: other agents keep ids of their own shape.
-      const own = [run.session, run.resume].find((id) => typeof id === "string" && SESSION.test(id));
+      const own = rule.emitsSession
+        ? [run.session, run.resume].find((id) => typeof id === "string" && SESSION.test(id))
+        : undefined;
       const session = event.session || own;
       const sent = ingest(draft, rule.emits.source, {
         ...event,
