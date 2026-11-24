@@ -30,6 +30,8 @@ export type Job = {
       link: string;
       receivedAt: string;
       hops?: number;
+      /** CodeHub fork: the conversation the event names. */
+      session?: string;
     }[];
     answers: {
       card: number;

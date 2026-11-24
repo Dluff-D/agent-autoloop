@@ -57,6 +57,21 @@ test("maxHops lets one rule take a longer chain; the others keep eight", () => {
   assert.ok(rows(w.view, "cards").some((c) => c.text.includes("12")));
 });
 
+test("an event a round sends names that round's conversation, and the next round sees it", () => {
+  const w = new World();
+  const r = structuredClone(rules);
+  r.rules[0].emits = { source: "app", types: ["two"] };
+  w.call("rules", r);
+  w.call("ingest", "app", { id: "start", type: "one", subject: "s1" });
+  const job = w.call("claimNext", "w1", "c");
+  w.call("started", job.run, job.token, { session: SESSION });
+  w.call("finish", job.run, job.token, { outcome: "done", events: [{ id: "back", type: "two", subject: "s1" }] });
+  assert.equal(rows(w.view, "events").find((e) => e.key === "back")!.session, SESSION);
+  const next = w.call("claimNext", "w2", "d");
+  assert.equal(next.context.events[0].session, SESSION);
+  assert.deepEqual(checkSchema("context-event", next.context.events[0]), []);
+});
+
 test("rules check: maxHops is 1 to 64, sessionFromEvent a boolean", () => {
   const base = JSON.parse(JSON.stringify({
     timezone: "UTC",

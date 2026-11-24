@@ -175,9 +175,10 @@ export function jobOf(view: View, run: Row, env: Environment): Job {
     session: run.session ?? run.resume,
     askFirst: rules.askFirst,
     context: {
-      events: events.map(({ key: id, source, type, subject, summary, detail, link, received_at: receivedAt, hops }) => {
+      events: events.map(({ key: id, source, type, subject, summary, detail, link, received_at: receivedAt, hops, session }) => {
         const sourceName = rules.sources[source]?.name ?? source;
-        return { id, source, sourceName, type, subject, summary, detail, link, receivedAt, hops: hops ?? 0 };
+        const named = session ? { session } : {};   // CodeHub fork: the conversation the event names
+        return { id, source, sourceName, type, subject, summary, detail, link, receivedAt, hops: hops ?? 0, ...named };
       }),
       answers: answers.map(
         ({ id: card, title, options, choice, answer: text, about, by, decided_at: at, run_id: asked }) => {

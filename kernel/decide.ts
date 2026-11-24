@@ -529,7 +529,14 @@ function applyReceipt(draft: Draft, run: Row, result: Result) {
   const emitted: number[] = [];
   for (const event of result.events ?? []) {
     if (rule?.emits && typeMatches(rule.emits.types, event.type)) {
-      const sent = ingest(draft, rule.emits.source, { ...event, hops: hopsOf(draft, run) + 1 });
+      // CodeHub fork: an event a round sends names that round's conversation unless it names another, so whoever
+      // takes it can send work back to the same conversation.
+      const session = event.session || run.session || run.resume;
+      const sent = ingest(draft, rule.emits.source, {
+        ...event,
+        ...(session && { session }),
+        hops: hopsOf(draft, run) + 1,
+      });
       // A number already taken is an earlier event's, perhaps another source's: what it says isn't what this receipt sent.
       if (!sent.duplicate) emitted.push(sent.event);
     } else rejected.push({ what: "events", reason: `规则「${run.rule}」没有写可以发 ${event.type}` });
