@@ -30,6 +30,7 @@ import {
   DELIVERY_REF,
   parseEvent,
   parseResult,
+  SESSION,
   type Later,
   type Rejected,
   type Result,
@@ -531,7 +532,9 @@ function applyReceipt(draft: Draft, run: Row, result: Result) {
     if (rule?.emits && typeMatches(rule.emits.types, event.type)) {
       // CodeHub fork: an event a round sends names that round's conversation unless it names another, so whoever
       // takes it can send work back to the same conversation.
-      const session = event.session || run.session || run.resume;
+      // Only a session in the form an event may carry: other agents keep ids of their own shape.
+      const own = [run.session, run.resume].find((id) => typeof id === "string" && SESSION.test(id));
+      const session = event.session || own;
       const sent = ingest(draft, rule.emits.source, {
         ...event,
         ...(session && { session }),
