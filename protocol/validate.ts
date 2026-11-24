@@ -46,10 +46,14 @@ export type EventInput = {
   detail: string;
   link: string;
   hops: number;
+  /** The session a rule with `sessionFromEvent` goes on in (CodeHub fork): an Agent's conversation id. */
+  session?: string;
 };
 
+/** A conversation id as the Agents write them (a UUID, or another word of letters, digits and dashes). */
+export const SESSION = /^[A-Za-z0-9][A-Za-z0-9-]{7,99}$/;
 const LIMITS = { id: 200, subject: 100, summary: 200, detail: 4000, link: 500 } as const;
-const FIELDS = ["id", "type", "subject", "summary", "detail", "link", "hops"];
+const FIELDS = ["id", "type", "subject", "summary", "detail", "link", "hops", "session"];
 
 export function parseEvent(input: unknown): EventInput {
   if (typeof input !== "object" || input === null || Array.isArray(input)) {
@@ -84,7 +88,11 @@ export function parseEvent(input: unknown): EventInput {
   if (event.link && !/^https?:\/\/[\x21-\x7e]+$/.test(event.link)) {
     throw new InputError("link 要是网址，非 ASCII 的字要先编码");
   }
-  return event;
+  if (given.session === undefined || given.session === "") return event;
+  if (typeof given.session !== "string" || !SESSION.test(given.session)) {
+    throw new InputError("session 要是对话 ID：字母、数字和 -，8 到 100 个字");
+  }
+  return { ...event, session: given.session };
 }
 
 type Item = Record<string, unknown>;

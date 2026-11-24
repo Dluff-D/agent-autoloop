@@ -225,6 +225,8 @@ function recordEvent(
     detail: event.detail ?? "",
     link: event.link ?? "",
     hops: event.hops ?? 0,
+    // CodeHub fork: the conversation a rule with sessionFromEvent goes on in.
+    ...(event.session && { session: event.session }),
     routed: JSON.stringify(routed),
     // Only where a pause held it back, so the owner's list of what was skipped reads an index of those alone.
     ...(paused.length && { paused: JSON.stringify(paused) }),
@@ -240,10 +242,13 @@ function ingest(draft: Draft, source: string, given: unknown, sent = false) {
   if (existing) {
     return { event: existing.id, duplicate: true, ...routingOf(existing) };
   }
-  const tooDeep = event.hops > MAX_HOPS;
   const takes = (rule: Rule) =>
     eventRule(rule) && rule.when.source === source && typeMatches(rule.when.types, event.type);
-  const matched = tooDeep ? [] : draft.rules.rules.filter(takes);
+  // CodeHub fork: a rule may allow a longer chain (maxHops); the default stays MAX_HOPS.
+  const candidates = draft.rules.rules.filter(takes);
+  const tooDeepFor = candidates.filter((rule) => event.hops > (rule.maxHops ?? MAX_HOPS));
+  const tooDeep = tooDeepFor.length > 0;
+  const matched = candidates.filter((rule) => event.hops <= (rule.maxHops ?? MAX_HOPS));
   // A paused rule doesn't take the event, and nothing is kept back for it: the event is recorded as skipped for it.
   const isPaused = (rule: Rule) => !!pauseOf(draft.view, rule, draft.now);
   const paused = matched.filter(isPaused).map((rule) => rule.name);
@@ -257,10 +262,14 @@ function ingest(draft: Draft, source: string, given: unknown, sent = false) {
     sent,
   );
   if (tooDeep) {
-    const words = `同一条处理链已超过 ${MAX_HOPS} 层，后续事件已记录，没有继续派发。`;
+    const limits = [...new Set(tooDeepFor.map((rule) => rule.maxHops ?? MAX_HOPS))].join("、");
+    const words = `同一条处理链已超过 ${limits} 层，后续事件已记录，没有继续派发。`;
     notify(draft, `hops:${source}:${event.id}`, "事件循环已停止", words, { once: true });
   }
-  for (const rule of taking) enqueue(draft, rule, id, rule.parallel ? event.subject : "");
+  for (const rule of taking) {
+    const session = rule.sessionFromEvent ? event.session : null;
+    enqueue(draft, rule, id, rule.parallel ? event.subject : "", session);
+  }
   return { event: id, duplicate: false, routed: taking.map((rule) => rule.name), paused };
 }
 

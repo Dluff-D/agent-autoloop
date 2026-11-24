@@ -25,6 +25,10 @@ type RuleOptions = RuleWords & {
   maxActive?: number;
   resume?: boolean;
   emits?: EventFilter;
+  /** CodeHub fork: a round goes on in the conversation its event names (event field `session`), if one is named. */
+  sessionFromEvent?: boolean;
+  /** CodeHub fork: how long a chain of events this rule still takes (default 8): longer work with review rounds. */
+  maxHops?: number;
 };
 /** Without channels a rule's cards reach the default ones, or every channel if there are none; with them, only those. */
 type Reach = { channels?: string[] };

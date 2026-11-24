@@ -17,6 +17,8 @@ const TELLS = ["always", "needed", "never"];
 const ID = /^[a-z][a-z0-9-]*$/;
 const TYPE_PATTERN = /^(\*|[a-z][a-z0-9_.-]{0,63}(\.\*)?)$/;
 const ASK_FIRST = ["删数据", "停服", "花钱", "对外发消息", "改产品方向", "新建或轮换密钥", "修改权限"];
+/** CodeHub fork: the most a rule's maxHops may allow. */
+const MAX_RULE_HOPS = 64;
 const NOT_EMPTY = "不能为空";
 const ID_WORDS = "只能用小写字母、数字和 -";
 
@@ -89,6 +91,8 @@ function checkRule(issues: string[], rules: Rules, rule: Rule, names: Set<string
     ["parallel", isCount, "要是正整数", true],
     ["maxActive", isCount, "要是正整数", true],
     ["resume", (value) => typeof value === "boolean", "只能是 true 或 false", true],
+    ["sessionFromEvent", (value) => typeof value === "boolean", "只能是 true 或 false", true],
+    ["maxHops", (value) => isCount(value) && (value as number) <= MAX_RULE_HOPS, `要是 1 到 ${MAX_RULE_HOPS} 的整数`, true],
     ["tell", (value) => TELLS.includes(value as string), `只能是 ${TELLS.join("、")}`, true],
     ["emits", isObject, "要是一个对象", true],
     ["channels", isSomeWords, "要是通道编号的列表", true],
