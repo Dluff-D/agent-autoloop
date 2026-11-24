@@ -52,6 +52,9 @@ export type Adapter = {
   link?(session: string): string;
   /** Whether it's installed and signed in, as `program` if its rules name one: what's wrong, in words a person can act on, or nothing. */
   check?(program?: string): string | null;
+  /** CodeHub fork: a session's running total as the agent itself recorded it, for going on in a session the hub did
+   * not start (opened by hand, say): without it the first round's cost there would be unknown. */
+  recordedUsage?(session: string): Usage | undefined;
 };
 
 const adapters = new Map<string, Adapter>();

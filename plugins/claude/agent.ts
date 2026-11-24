@@ -1,7 +1,7 @@
 // Claude Code: the user's own, installed and signed in by them. This only ever runs the official program.
 import { execFileSync } from "node:child_process";
 import { commandLine } from "../../host/command.ts";
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import { findProgram, tail, type Adapter } from "../../worker/agents.ts";
@@ -39,7 +39,30 @@ function limitedUntil(messages: any[], result: any) {
   return { limitedUntil: new Date(resets > 0 ? resets : Date.now() + HOUR).toISOString() };
 }
 
+/** CodeHub fork: where Claude Code keeps its conversations (CLAUDE_CONFIG_DIR moves them). */
+const projectsFolder = () => path.join(process.env.CLAUDE_CONFIG_DIR || path.join(homedir(), ".claude"), "projects");
+
+/** CodeHub fork: the running total a conversation's own record ends with: its last cost-state line, the same number
+ * --print reports as total_cost_usd. A conversation is filed under the folder it was started in, so every one is
+ * looked in. */
+export function recordedUsage(session: string, root = projectsFolder()) {
+  if (!/^[A-Za-z0-9-]+$/.test(session) || !existsSync(root)) return undefined;
+  for (const folder of readdirSync(root, { withFileTypes: true })) {
+    const file = path.join(root, folder.name, `${session}.jsonl`);
+    if (!folder.isDirectory() || !existsSync(file)) continue;
+    let cost: number | undefined;
+    for (const line of readFileSync(file, "utf8").split("\n")) {
+      if (!line.includes('"cost-state"')) continue;
+      const total = JSON.parse(line).totalCostUSD;
+      if (typeof total === "number") cost = total;
+    }
+    return cost === undefined ? undefined : { cost };
+  }
+  return undefined;
+}
+
 export default {
+  recordedUsage: (session: string) => recordedUsage(session),
   command: (turn) => [
     turn.program ?? findProgram("claude", inTheApp),
     "-p",

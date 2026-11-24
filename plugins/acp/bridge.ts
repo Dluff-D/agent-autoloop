@@ -159,6 +159,9 @@ export async function bridge(turn: Turn) {
       if (typeof sessionId !== "string" || !sessionId) throw new Error("ACP 没有返回会话编号");
       session = sessionId;
     }
+    // CodeHub fork: the rules' model for this agent (Antigravity lists its models when a session is made and takes
+    // session/set_model). A model it refuses ends the turn with the agent's reason, before any work.
+    if (turn.model) await rpc("session/set_model", { sessionId: session, modelId: turn.model });
     // Before the prompt goes: the agent can start on it at once, and this has to be there if the bridge is killed then.
     console.log(JSON.stringify({ session, started: true }));
     collecting = true;

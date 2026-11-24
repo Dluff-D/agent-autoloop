@@ -101,3 +101,22 @@ test("rules check: maxHops is 1 to 64, sessionFromEvent a boolean", () => {
   for (const extra of [{ maxHops: 0 }, { maxHops: 65 }, { maxHops: 2.5 }, { sessionFromEvent: "yes" }, { emitsSession: 1 }])
     assert.throws(() => parseRules(with_(extra), 0, "UTC"));
 });
+
+test("a conversation the hub did not start: its recorded running total is the starting point", async () => {
+  const { mkdtempSync, mkdirSync, writeFileSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const path = await import("node:path");
+  const { recordedUsage } = await import("../plugins/claude/agent.ts");
+  const root = mkdtempSync(path.join(tmpdir(), "codehub-usage-"));
+  mkdirSync(path.join(root, "C--some-folder"));
+  const lines = [
+    { type: "user", message: { content: "hi" } },
+    { type: "cost-state", totalCostUSD: 0.0034 },
+    { type: "assistant", message: { content: [] } },
+    { type: "cost-state", totalCostUSD: 0.0067 },
+  ];
+  writeFileSync(path.join(root, "C--some-folder", `${SESSION}.jsonl`), lines.map((l) => JSON.stringify(l)).join("\n"));
+  assert.deepEqual(recordedUsage(SESSION, root), { cost: 0.0067 });
+  assert.equal(recordedUsage("ffffffff-0000-0000-0000-000000000000", root), undefined);
+  assert.equal(recordedUsage("../escape", root), undefined);
+});

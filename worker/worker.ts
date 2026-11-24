@@ -252,7 +252,9 @@ export function createWorker({
   function launch(entry: Entry, adapter: Adapter, prompt: string) {
     entry.turn += 1;
     entry.launchedAt = now();
-    entry.usageBaseline = entry.resume ? loadUsage(entry.job.agent.use, entry.resume) : undefined;
+    entry.usageBaseline = entry.resume
+      ? (loadUsage(entry.job.agent.use, entry.resume) ?? adapter.recordedUsage?.(entry.resume))
+      : undefined;
     delete entry.finishedAt;
     delete entry.pid;
     delete entry.stopping;
