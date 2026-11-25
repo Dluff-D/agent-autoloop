@@ -16,6 +16,8 @@ export type Job = {
     program?: string;
     /** CodeHub fork: see Turn.approver. */
     approver?: string[];
+    /** CodeHub fork: see Turn.fallbackModels. */
+    fallbackModels?: string[];
     timeout?: number;
   };
   session: string | null;

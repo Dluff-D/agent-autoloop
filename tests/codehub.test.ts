@@ -10,7 +10,9 @@ import { parseEvent } from "../protocol/validate.ts";
 import { parseRules } from "../protocol/rules.ts";
 import { checkSchema } from "../protocol/schema.ts";
 import { passClick } from "../plugins/feishu/channel.ts";
-import { mkdtempSync, readFileSync } from "node:fs";
+import { quotaOf } from "../plugins/acp/bridge.ts";
+import { spawn } from "node:child_process";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -145,6 +147,67 @@ test("mustEmit: a round that finishes without its report tells the owner; one th
   w.call("finish", talks.run, talks.token, { outcome: "done", events: [{ id: "report", type: "two", subject: "s2" }] });
   assert.equal(said().length, 1);
   assert.throws(() => parseRules({ ...r, rules: [{ ...r.rules[0], mustEmit: "yes" }] }, 0, "UTC"));
+});
+
+// 2026-11-25: Antigravity's Claude ran out of its quota pool and its "quota reached" answer counted as the work done.
+const QUOTA_TEXT = "⚠ Third-party quota reached. Please switch to Gemini models or upgrade your subscription to increase your limits. Resets in 3h42m58s.";
+
+test("quotaOf: Antigravity's quota answer and when it ends; a long answer that mentions quota is work", () => {
+  const now = Date.parse("2026-11-25T12:00:00Z");
+  assert.equal(quotaOf(QUOTA_TEXT, now)!.until, new Date(now + (3 * 3600 + 42 * 60 + 58) * 1000).toISOString());
+  assert.equal(quotaOf("Quota exceeded.", now)!.until, new Date(now + 3_600_000).toISOString());
+  assert.equal(quotaOf("Done: the report says the quota reached its limit last week. " + "x".repeat(700), now), null);
+  assert.equal(quotaOf("完成了", now), null);
+});
+
+/** A stand-in Antigravity: the first model answers with the quota message, the others do the turn and say who did. */
+function quotaAgent(dir: string) {
+  const file = join(dir, "quota-agent.mjs");
+  writeFileSync(
+    file,
+    `import readline from 'node:readline';
+let model = 'none'; const asked = [];
+const send = (x) => process.stdout.write(JSON.stringify({ jsonrpc: '2.0', ...x }) + '\\n');
+const say = (text) => send({ method: 'session/update', params: { sessionId: 's1', update: { sessionUpdate: 'agent_message_chunk', messageId: 'm' + asked.length, content: { type: 'text', text } } } });
+readline.createInterface({ input: process.stdin }).on('line', (line) => { const m = JSON.parse(line); if (m.id === undefined) return;
+  if (m.method === 'initialize') send({ id: m.id, result: { protocolVersion: 1, agentCapabilities: {} } });
+  if (m.method === 'session/new') send({ id: m.id, result: { sessionId: 's1' } });
+  if (m.method === 'session/set_model') { model = m.params.modelId; send({ id: m.id, result: {} }); }
+  if (m.method === 'session/prompt') { asked.push(m.params.prompt[0].text);
+    say(model === 'claude' || model === 'neon-out' ? ${JSON.stringify(QUOTA_TEXT)} : '完成了，由 ' + model + ' 做；第 ' + asked.length + ' 次提示：' + asked.at(-1).slice(0, 40));
+    send({ id: m.id, result: { stopReason: 'end_turn', usage: { inputTokens: 10, outputTokens: 1 } } }); }
+});`,
+  );
+  return file;
+}
+
+const bridgeTurn = (turn: object) =>
+  new Promise<string>((done) => {
+    const script = join(import.meta.dirname, "../plugins/acp/bridge.ts");
+    const child = spawn(process.execPath, ["--disable-warning=ExperimentalWarning", script, JSON.stringify(turn)], {
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let out = "";
+    child.stdout.on("data", (b) => (out += b));
+    child.on("close", () => done(out));
+  });
+
+test("ACP out of quota goes on in the same conversation with the next model; out on all, it says until when", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "quota-"));
+  const agent = quotaAgent(dir);
+  const base = { command: [process.execPath, agent], cwd: dir, prompt: "做这件事", access: "read", resume: null };
+  const lastOf = (out: string) =>
+    out.trim().split("\n").map((l) => JSON.parse(l)).reduce((a, b) => ({ ...a, ...b }), {});
+  const went = lastOf(await bridgeTurn({ ...base, model: "claude", fallbackModels: ["neon-out", "neon"] }));
+  assert.equal(went.error, undefined);
+  assert.match(went.text, /由 neon 做；第 3 次提示：（中控台：neon-out 的额度用完了/);
+  assert.equal(went.session, "s1");
+  assert.deepEqual(went.usage, { input: 30, output: 3, cached: 0 });
+  const stuck = lastOf(await bridgeTurn({ ...base, model: "claude", fallbackModels: ["neon-out"] }));
+  assert.match(stuck.error, /quota reached/);
+  assert.ok(Date.parse(stuck.limitedUntil) > Date.now() + 3 * 3600 * 1000);
+  const plain = lastOf(await bridgeTurn({ ...base, model: "neon" }));
+  assert.match(plain.text, /由 neon 做；第 1 次提示：做这件事/);
 });
 
 test("rules check: maxHops is 1 to 64, sessionFromEvent a boolean", () => {

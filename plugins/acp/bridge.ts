@@ -11,6 +11,24 @@ import type { Turn } from "../../worker/agents.ts";
 /** The agent said no, as opposed to going away, saying nothing, or having what was asked for in use. */
 class Refused extends Error {}
 
+/** CodeHub fork: what Antigravity answers instead of doing the turn when the model's quota pool is used up, e.g.
+ * "⚠ Third-party quota reached. Please switch to Gemini models ... Resets in 3h42m58s." */
+const OUT_OF_QUOTA = /quota (?:reached|exceeded|exhausted)|out of quota|usage limit reached/i;
+
+/** CodeHub fork: whether a turn's answer says it is out of quota, and if so when that ends (an ISO time; an hour from
+ * now when it doesn't say). */
+export function quotaOf(text: string, now = Date.now()): { until: string } | null {
+  if (!OUT_OF_QUOTA.test(text) || text.length > 600) return null;   // a long answer that mentions quota did its work
+  const resets = /resets? in\s+(?:(\d+)\s*h)?\s*(?:(\d+)\s*m)?\s*(?:(\d+)\s*s)?/i.exec(text);
+  const seconds = resets ? Number(resets[1] ?? 0) * 3600 + Number(resets[2] ?? 0) * 60 + Number(resets[3] ?? 0) : 0;
+  return { until: new Date(now + (seconds > 0 ? seconds * 1000 : 3_600_000)).toISOString() };
+}
+
+/** CodeHub fork: what the next model is told when it takes over a turn the last one could not do. */
+export const takeOver = (prompt: string, from: string | undefined, to: string) =>
+  `（中控台：${from ?? "上一个模型"} 的额度用完了，这一轮没做成；现在换成 ${to} 接着做。请照下面的任务说明把这一轮做完，` +
+  `汇报里写一句"这一轮由 ${to} 完成（${from ?? "上一个模型"} 额度用完）"。）\n\n${prompt}`;
+
 const isLink = (file: string) => {
   try {
     return lstatSync(file).isSymbolicLink();
@@ -210,7 +228,33 @@ export async function bridge(turn: Turn) {
     console.log(JSON.stringify({ session, started: true }));
     collecting = true;
     const prompt = [{ type: "text", text: turn.prompt }];
-    const result = await rpc("session/prompt", { sessionId: session, prompt });
+    let result = await rpc("session/prompt", { sessionId: session, prompt });
+    // CodeHub fork: out of quota, the same conversation goes on with the next model the rules list (another quota pool).
+    const models = [...(turn.fallbackModels ?? [])];
+    let model = turn.model;
+    const spent = result.usage ? [result.usage] : [];
+    while (result.stopReason === "end_turn" && quotaOf(text) && models.length) {
+      const to = models.shift()!;
+      console.error(`${model ?? "the model"} is out of quota; going on with ${to} in the same conversation`);
+      await rpc("session/set_model", { sessionId: session, modelId: to });
+      text = "";
+      message = undefined;
+      boundary = false;
+      result = await rpc("session/prompt", { sessionId: session, prompt: [{ type: "text", text: takeOver(turn.prompt, model, to) }] });
+      if (result.usage) spent.push(result.usage);
+      model = to;
+    }
+    const limited = result.stopReason === "end_turn" ? quotaOf(text) : null;
+    if (limited) {
+      console.log(JSON.stringify({ session, finished: true, error: text.trim().slice(0, 300), limitedUntil: limited.until }));
+      return;
+    }
+    if (spent.length > 1) {
+      const sum = (key: string) => spent.reduce((total, used: any) => total + (used[key] ?? 0), 0);
+      result.usage = Object.fromEntries(
+        ["inputTokens", "cachedReadTokens", "cachedWriteTokens", "outputTokens", "thoughtTokens"].map((k) => [k, sum(k)]),
+      );
+    }
     if (result.stopReason !== "end_turn") throw new Error(`ACP 没有完成这一轮：${result.stopReason}`);
     // end_turn with nothing said is not a turn that stopped early: an agent whose model refused answers this way, and the
     // old reason quoted "end_turn" back as if it had failed, leaving no cause to look for.

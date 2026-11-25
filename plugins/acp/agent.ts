@@ -24,7 +24,9 @@ export default {
       // What the agent itself said, then why it failed. The bridge says that last, unless the agent went on talking.
       const said = tail(stderr);
       const error = said.endsWith(reading.error ?? "") ? said : tail(`${said}\n${reading.error}`);
-      return { session: reading.session, started: reading.started, error: error || "ACP 没有完成这一轮" };
+      // CodeHub fork: out of quota on every model it may use, the agent takes no work until then (the hub's own pause).
+      const limited = reading.limitedUntil && { limitedUntil: reading.limitedUntil };
+      return { session: reading.session, started: reading.started, error: error || "ACP 没有完成这一轮", ...limited };
     }
     return reading;
   },

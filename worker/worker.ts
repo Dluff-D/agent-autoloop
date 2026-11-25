@@ -274,6 +274,7 @@ export function createWorker({
       command: agent.command,
       program: agent.program,
       approver: agent.approver,
+      fallbackModels: agent.fallbackModels,
       contextFile: path.join(entry.dir, "context.json"),
       folder: entry.dir,
     };

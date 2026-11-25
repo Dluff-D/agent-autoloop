@@ -28,6 +28,9 @@ export type Turn = {
   /** CodeHub fork: a command asked about whatever the plugin itself would refuse (ACP agents): it reads the request as
    * JSON on standard input and answers {"allow": true|false, "message": "..."} on standard output. */
   approver?: string[];
+  /** CodeHub fork: models an ACP agent goes on with, in order, in the same conversation, when the one it has says it is
+   * out of quota (Antigravity keeps a quota pool per family of models). */
+  fallbackModels?: string[];
   contextFile: string;
   folder: string;
 };
