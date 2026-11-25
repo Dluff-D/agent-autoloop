@@ -31,6 +31,8 @@ type RuleOptions = RuleWords & {
   maxHops?: number;
   /** CodeHub fork: the events this rule's rounds send name the round's own conversation (a worker's report back). */
   emitsSession?: boolean;
+  /** CodeHub fork: a round that finishes without sending any event it may send is a broken chain: the owner hears. */
+  mustEmit?: boolean;
 };
 /** Without channels a rule's cards reach the default ones, or every channel if there are none; with them, only those. */
 type Reach = { channels?: string[] };

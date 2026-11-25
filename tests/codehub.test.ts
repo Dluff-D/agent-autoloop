@@ -127,6 +127,26 @@ test("feishu: a click on no card of the hub's goes to the clicks command on stdi
   assert.match(logged.join("\n"), /ended with 3/);
 });
 
+test("mustEmit: a round that finishes without its report tells the owner; one that reports does not", () => {
+  // 2026-11-25: a reviewer's round ended while its own helper was still checking; nothing came back, nobody heard.
+  const w = new World();
+  const r = structuredClone(rules);
+  r.rules[0].emits = { source: "app", types: ["two"] };
+  r.rules[0].mustEmit = true;
+  w.call("rules", r);
+  w.call("ingest", "app", { id: "quiet", type: "one", subject: "s1" });
+  const quiet = w.call("claimNext", "w1", "c");
+  w.call("finish", quiet.run, quiet.token, { outcome: "done", summary: "Waiting for the verifier" });
+  const said = () => rows(w.view, "cards").filter((c) => c.kind === "notice" && String(c.text).includes("没有发出汇报事件"));
+  assert.equal(said().length, 1);
+  assert.match(String(said()[0].text), /Waiting for the verifier/);
+  w.call("ingest", "app", { id: "talks", type: "one", subject: "s2" });
+  const talks = w.call("claimNext", "w1", "c");
+  w.call("finish", talks.run, talks.token, { outcome: "done", events: [{ id: "report", type: "two", subject: "s2" }] });
+  assert.equal(said().length, 1);
+  assert.throws(() => parseRules({ ...r, rules: [{ ...r.rules[0], mustEmit: "yes" }] }, 0, "UTC"));
+});
+
 test("rules check: maxHops is 1 to 64, sessionFromEvent a boolean", () => {
   const base = JSON.parse(JSON.stringify({
     timezone: "UTC",

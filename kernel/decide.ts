@@ -556,6 +556,12 @@ function applyReceipt(draft: Draft, run: Row, result: Result) {
   }
   // The source whose event this run took reads them back (`eventOutcome`); nothing else links them to the run.
   if (emitted.length) put(draft, "runs", id, { emitted: JSON.stringify(emitted) });
+  // CodeHub fork: a worker's or reviewer's round that hands nothing back leaves whoever waits for it waiting for ever
+  // (2026-11-25: a reviewer ended its turn while a helper of its own was still checking). Say so instead.
+  else if (rule?.mustEmit) {
+    const words = `规则「${run.rule}」第 ${id} 轮做完了，但没有发出汇报事件，等它的那一步不会再往下走。它最后说：${summary.slice(0, 200)}`;
+    notify(draft, `silent:${id}`, "这一轮没有交回结果", words, { once: true });
+  }
   clearFiredTimers(draft, run);
   return rejected;
 }

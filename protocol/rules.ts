@@ -93,6 +93,7 @@ function checkRule(issues: string[], rules: Rules, rule: Rule, names: Set<string
     ["resume", (value) => typeof value === "boolean", "只能是 true 或 false", true],
     ["sessionFromEvent", (value) => typeof value === "boolean", "只能是 true 或 false", true],
     ["emitsSession", (value) => typeof value === "boolean", "只能是 true 或 false", true],
+    ["mustEmit", (value) => typeof value === "boolean", "只能是 true 或 false", true],
     ["maxHops", (value) => isCount(value) && (value as number) <= MAX_RULE_HOPS, `要是 1 到 ${MAX_RULE_HOPS} 的整数`, true],
     ["tell", (value) => TELLS.includes(value as string), `只能是 ${TELLS.join("、")}`, true],
     ["emits", isObject, "要是一个对象", true],
