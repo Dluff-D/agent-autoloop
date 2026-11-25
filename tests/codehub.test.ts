@@ -144,3 +144,21 @@ test("ACP: what the plugin refuses goes to the approver; its answer decides, any
   const allowed = permission(turn(), read);
   assert.equal((await approve(turn(no), read, allowed)).optionId, "allow");
 });
+
+test("ACP with an approver: reading outside the folder goes to the approver; inside, or without one, it stays free", async () => {
+  const { permission } = await import("../plugins/acp/bridge.ts");
+  const { tmpdir } = await import("node:os");
+  const path = await import("node:path");
+  const options = [
+    { optionId: "allow", kind: "allow_once" },
+    { optionId: "deny", kind: "reject_once" },
+  ];
+  const outside = path.join(tmpdir(), "codehub-zone-probe.txt");
+  const inside = path.join(process.cwd(), "package.json");
+  const read = (file: string) => ({ options, toolCall: { kind: "read", title: file, locations: [{ path: file }] } });
+  const withApprover = { access: "edit" as const, cwd: process.cwd(), approver: ["x"] };
+  const without = { access: "edit" as const, cwd: process.cwd() };
+  assert.equal(permission(withApprover, read(outside)).optionId, "deny");
+  assert.equal(permission(withApprover, read(inside)).optionId, "allow");
+  assert.equal(permission(without, read(outside)).optionId, "allow");
+});

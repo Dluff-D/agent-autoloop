@@ -31,7 +31,7 @@ function resolved(file: string): string | null {
   return isLink(path) ? null : path;
 }
 
-export function permission(turn: Pick<Turn, "access" | "cwd">, params: any) {
+export function permission(turn: Pick<Turn, "access" | "cwd" | "approver">, params: any) {
   const tool = params.toolCall ?? {};
   const inside = (location: any) => {
     if (typeof location.path !== "string" || !isAbsolute(location.path)) return false;
@@ -42,7 +42,11 @@ export function permission(turn: Pick<Turn, "access" | "cwd">, params: any) {
   };
   const editsInside =
     turn.access === "edit" && tool.kind === "edit" && tool.locations?.length > 0 && tool.locations.every(inside);
-  const allowed = turn.access === "full" || tool.kind === "read" || tool.kind === "search" || editsInside;
+  // CodeHub fork: with an approver, reading outside the folder is the approver's to decide (data zones an agent may
+  // not read); without one, reading stays free as upstream has it.
+  const reading = tool.kind === "read" || tool.kind === "search";
+  const readsFree = reading && (!turn.approver?.length || !tool.locations?.length || tool.locations.every(inside));
+  const allowed = turn.access === "full" || readsFree || editsInside;
   const option = params.options?.find((option: any) => option.kind === (allowed ? "allow_once" : "reject_once"));
   return option ? { outcome: "selected", optionId: option.optionId } : { outcome: "cancelled" };
 }
