@@ -89,6 +89,26 @@ test("without emitsSession a dispatched event that names no session starts a new
   assert.equal(worker.session, null);
 });
 
+test("a receipt's event whose id is taken is not sent on, and the round and the owner are told", () => {
+  // P3.6, 2026-11-25: a reviewer's and a fixing round's reports reused the first report's id and vanished quietly.
+  const w = new World();
+  const r = structuredClone(rules);
+  r.rules[0].emits = { source: "app", types: ["two"] };
+  w.call("rules", r);
+  const report = { outcome: "done", events: [{ id: "done-t1", type: "two", subject: "t1" }] };
+  w.call("ingest", "app", { id: "start", type: "one", subject: "s1" });
+  const first = w.call("claimNext", "w1", "c");
+  assert.deepEqual(w.call("finish", first.run, first.token, report).rejected, []);
+  w.call("ingest", "app", { id: "again", type: "one", subject: "s1" });
+  const second = w.call("claimNext", "w1", "c");
+  const { rejected } = w.call("finish", second.run, second.token, report);
+  assert.equal(rejected.length, 1);
+  assert.match(rejected[0].reason, /done-t1/);
+  assert.equal(rows(w.view, "events").filter((e) => e.key.startsWith("done-t1")).length, 1);
+  const notices = rows(w.view, "cards").filter((c) => c.kind === "notice" && String(c.text).includes("done-t1"));
+  assert.equal(notices.length, 1);
+});
+
 test("rules check: maxHops is 1 to 64, sessionFromEvent a boolean", () => {
   const base = JSON.parse(JSON.stringify({
     timezone: "UTC",

@@ -545,6 +545,13 @@ function applyReceipt(draft: Draft, run: Row, result: Result) {
       });
       // A number already taken is an earlier event's, perhaps another source's: what it says isn't what this receipt sent.
       if (!sent.duplicate) emitted.push(sent.event);
+      else {
+        // CodeHub fork: still not sent on (the id is an earlier event's), but no longer quietly: the round's answer and
+        // the owner both hear of it, so a report that reused an id is not lost without a trace.
+        const words = `规则「${run.rule}」第 ${id} 轮发的事件 ${event.id}（${event.type}）和之前一个事件的 id 相同，被当成重复消息，没有派发。`;
+        rejected.push({ what: "events", reason: `事件 id ${event.id} 已经用过，没有派发；每个事件要用新的 id` });
+        notify(draft, `duplicate:${rule.emits.source}:${event.id}:${id}`, "事件没有派发", words, { once: true });
+      }
     } else rejected.push({ what: "events", reason: `规则「${run.rule}」没有写可以发 ${event.type}` });
   }
   // The source whose event this run took reads them back (`eventOutcome`); nothing else links them to the run.
