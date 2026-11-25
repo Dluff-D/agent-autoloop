@@ -18,6 +18,8 @@ export type Job = {
     approver?: string[];
     /** CodeHub fork: see Turn.fallbackModels. */
     fallbackModels?: string[];
+    /** CodeHub fork: see Turn.onQuota. */
+    onQuota?: string[];
     timeout?: number;
   };
   session: string | null;

@@ -188,6 +188,7 @@ export function parseRules(json: string, now: number, timezone: string): Rules {
       ["program", isText, "要是一个程序的路径", true],
       ["approver", isSomeWords, "要是命令行的列表", true],
       ["fallbackModels", isSomeWords, "要是模型名的列表", true],
+      ["onQuota", isSomeWords, "要是命令行的列表", true],
       ["timeout", isCount, "要是正整数（分钟）", true],
       ["maxActive", isCount, "要是正整数", true],
     ]);

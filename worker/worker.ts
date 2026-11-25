@@ -275,6 +275,7 @@ export function createWorker({
       program: agent.program,
       approver: agent.approver,
       fallbackModels: agent.fallbackModels,
+      onQuota: agent.onQuota,
       contextFile: path.join(entry.dir, "context.json"),
       folder: entry.dir,
     };

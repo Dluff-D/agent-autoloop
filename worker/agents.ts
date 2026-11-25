@@ -31,6 +31,8 @@ export type Turn = {
   /** CodeHub fork: models an ACP agent goes on with, in order, in the same conversation, when the one it has says it is
    * out of quota (Antigravity keeps a quota pool per family of models). */
   fallbackModels?: string[];
+  /** CodeHub fork: a command told when a model of this ACP agent is out of quota (JSON on standard input). */
+  onQuota?: string[];
   contextFile: string;
   folder: string;
 };

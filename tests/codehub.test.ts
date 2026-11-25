@@ -195,7 +195,10 @@ const bridgeTurn = (turn: object) =>
 test("ACP out of quota goes on in the same conversation with the next model; out on all, it says until when", async () => {
   const dir = mkdtempSync(join(tmpdir(), "quota-"));
   const agent = quotaAgent(dir);
-  const base = { command: [process.execPath, agent], cwd: dir, prompt: "做这件事", access: "read", resume: null };
+  const told = join(dir, "told.jsonl");
+  const tell = [process.execPath, "-e", `require("fs").appendFileSync(${JSON.stringify(told)}, require("fs").readFileSync(0) + "\\n")`];
+  const base = { command: [process.execPath, agent], cwd: dir, prompt: "做这件事", access: "read", resume: null, onQuota: tell };
+  const toldLines = () => readFileSync(told, "utf8").trim().split("\n").map((l) => JSON.parse(l));
   const lastOf = (out: string) =>
     out.trim().split("\n").map((l) => JSON.parse(l)).reduce((a, b) => ({ ...a, ...b }), {});
   const went = lastOf(await bridgeTurn({ ...base, model: "claude", fallbackModels: ["neon-out", "neon"] }));
@@ -203,11 +206,15 @@ test("ACP out of quota goes on in the same conversation with the next model; out
   assert.match(went.text, /由 neon 做；第 3 次提示：（中控台：neon-out 的额度用完了/);
   assert.equal(went.session, "s1");
   assert.deepEqual(went.usage, { input: 30, output: 3, cached: 0 });
+  assert.deepEqual(toldLines().map((t) => [t.model, t.next]), [["claude", "neon-out"], ["neon-out", "neon"]]);
+  assert.match(toldLines()[0].said, /quota reached/);
   const stuck = lastOf(await bridgeTurn({ ...base, model: "claude", fallbackModels: ["neon-out"] }));
   assert.match(stuck.error, /quota reached/);
   assert.ok(Date.parse(stuck.limitedUntil) > Date.now() + 3 * 3600 * 1000);
+  assert.deepEqual(toldLines().slice(2).map((t) => [t.model, t.next]), [["claude", "neon-out"], ["neon-out", null]]);
   const plain = lastOf(await bridgeTurn({ ...base, model: "neon" }));
   assert.match(plain.text, /由 neon 做；第 1 次提示：做这件事/);
+  assert.equal(toldLines().length, 4);
 });
 
 test("rules check: maxHops is 1 to 64, sessionFromEvent a boolean", () => {

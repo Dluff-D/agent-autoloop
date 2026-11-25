@@ -24,6 +24,25 @@ export function quotaOf(text: string, now = Date.now()): { until: string } | nul
   return { until: new Date(now + (seconds > 0 ? seconds * 1000 : 3_600_000)).toISOString() };
 }
 
+/** CodeHub fork: tells the turn's `onQuota` command (if any) that a model is out of quota: it reads
+ * {"model", "until", "next", "said"} as JSON on standard input (next: the model going on, or null when none is left).
+ * Its answer is not waited for long and changes nothing: the turn goes on either way. */
+export function tellQuota(turn: Pick<Turn, "onQuota" | "cwd">, what: object): Promise<void> {
+  if (!turn.onQuota?.length) return Promise.resolve();
+  const [program, args] = commandLine(turn.onQuota);
+  return new Promise((done) => {
+    const child = spawn(program, args, { cwd: turn.cwd, stdio: ["pipe", "ignore", "ignore"], windowsHide: true });
+    const timer = setTimeout(done, 30_000);
+    timer.unref();
+    child.on("error", (error) => {
+      console.error(`the onQuota command couldn't run: ${error}`);
+      done();
+    });
+    child.on("close", () => done());
+    child.stdin.end(JSON.stringify(what));
+  });
+}
+
 /** CodeHub fork: what the next model is told when it takes over a turn the last one could not do. */
 export const takeOver = (prompt: string, from: string | undefined, to: string) =>
   `（中控台：${from ?? "上一个模型"} 的额度用完了，这一轮没做成；现在换成 ${to} 接着做。请照下面的任务说明把这一轮做完，` +
@@ -236,6 +255,7 @@ export async function bridge(turn: Turn) {
     while (result.stopReason === "end_turn" && quotaOf(text) && models.length) {
       const to = models.shift()!;
       console.error(`${model ?? "the model"} is out of quota; going on with ${to} in the same conversation`);
+      await tellQuota(turn, { model, until: quotaOf(text)!.until, next: to, said: text.trim().slice(0, 300) });
       await rpc("session/set_model", { sessionId: session, modelId: to });
       text = "";
       message = undefined;
@@ -246,6 +266,7 @@ export async function bridge(turn: Turn) {
     }
     const limited = result.stopReason === "end_turn" ? quotaOf(text) : null;
     if (limited) {
+      await tellQuota(turn, { model, until: limited.until, next: null, said: text.trim().slice(0, 300) });
       console.log(JSON.stringify({ session, finished: true, error: text.trim().slice(0, 300), limitedUntil: limited.until }));
       return;
     }
