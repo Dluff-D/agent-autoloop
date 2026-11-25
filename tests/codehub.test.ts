@@ -120,3 +120,27 @@ test("a conversation the hub did not start: its recorded running total is the st
   assert.equal(recordedUsage("ffffffff-0000-0000-0000-000000000000", root), undefined);
   assert.equal(recordedUsage("../escape", root), undefined);
 });
+
+test("ACP: what the plugin refuses goes to the approver; its answer decides, anything else is a no", async () => {
+  const { approve, permission } = await import("../plugins/acp/bridge.ts");
+  const options = [
+    { optionId: "allow", kind: "allow_once" },
+    { optionId: "deny", kind: "reject_once" },
+  ];
+  const run = { kind: "execute", title: "git status", rawInput: { CommandLine: "git status" } };
+  const params = { options, toolCall: run };
+  const say = (code: string) => [process.execPath, "-e", code];
+  const turn = (approver?: string[]) => ({ access: "edit" as const, cwd: process.cwd(), approver });
+  const refused = permission(turn(), params);
+  assert.equal(refused.optionId, "deny");
+  assert.equal((await approve(turn(), params, refused)).optionId, "deny");
+  const yes = say("process.stdin.resume();process.stdin.on('end',()=>process.stdout.write(JSON.stringify({allow:true})))");
+  assert.equal((await approve(turn(yes), params, refused)).optionId, "allow");
+  const no = say("process.stdin.resume();process.stdin.on('end',()=>process.stdout.write(JSON.stringify({allow:false})))");
+  assert.equal((await approve(turn(no), params, refused)).optionId, "deny");
+  assert.equal((await approve(turn(say("process.exit(3)")), params, refused)).optionId, "deny");
+  assert.equal((await approve(turn(say("process.stdout.write('yes')")), params, refused)).optionId, "deny");
+  const read = { options, toolCall: { kind: "read", title: "a file", locations: [] } };
+  const allowed = permission(turn(), read);
+  assert.equal((await approve(turn(no), read, allowed)).optionId, "allow");
+});

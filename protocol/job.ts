@@ -14,6 +14,8 @@ export type Job = {
     access: string;
     command?: string[];
     program?: string;
+    /** CodeHub fork: see Turn.approver. */
+    approver?: string[];
     timeout?: number;
   };
   session: string | null;

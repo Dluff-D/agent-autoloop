@@ -47,6 +47,41 @@ export function permission(turn: Pick<Turn, "access" | "cwd">, params: any) {
   return option ? { outcome: "selected", optionId: option.optionId } : { outcome: "cancelled" };
 }
 
+/** CodeHub fork: asks the turn's approver about a request the rules above refuse (a command, an edit outside the
+ * folder). The approver reads the request as JSON and answers {"allow": true|false, "message": "..."}; anything else,
+ * or an approver that fails, is a no. Without an approver the plugin's own answer stands. */
+export async function approve(turn: Pick<Turn, "approver" | "cwd">, params: any, answer: any) {
+  const refused = answer.outcome === "cancelled" || params.options?.find((o: any) => o.optionId === answer.optionId)?.kind !== "allow_once";
+  if (!refused || !turn.approver?.length) return answer;
+  const tool = params.toolCall ?? {};
+  const raw = tool.rawInput ?? {};
+  const request = {
+    tool: tool.kind ?? "",
+    title: tool.title ?? "",
+    command: raw.CommandLine ?? raw.command ?? "",
+    paths: (tool.locations ?? []).map((location: any) => location.path).filter(Boolean),
+    input: raw,
+    cwd: turn.cwd,
+  };
+  const [program, args] = commandLine(turn.approver);
+  const said = await new Promise<string>((done) => {
+    const child = spawn(program, args, { cwd: turn.cwd, windowsHide: true });
+    let out = "";
+    child.stdout.on("data", (chunk) => (out += chunk));
+    child.on("error", () => done(""));
+    child.on("close", () => done(out));
+    child.stdin.end(JSON.stringify(request));
+  });
+  let allow = false;
+  try {
+    allow = JSON.parse(said.trim().split("\n").at(-1) ?? "").allow === true;
+  } catch {
+    /* Not an answer: a no. */
+  }
+  const option = params.options?.find((o: any) => o.kind === (allow ? "allow_once" : "reject_once"));
+  return option ? { outcome: "selected", optionId: option.optionId } : { outcome: "cancelled" };
+}
+
 export async function bridge(turn: Turn) {
   if (!turn.command?.length) throw new Error("ACP 要在 command 写启动命令");
   // The last go may have done its work in this session, so whatever breaks now says nothing about whether a new session
@@ -101,7 +136,12 @@ export async function bridge(turn: Turn) {
     } else if (incoming.method && incoming.id !== undefined) {
       const { id, method, params } = incoming;
       if (method === "session/request_permission" && params?.sessionId === session) {
-        send({ id, result: { outcome: permission(turn, { ...params, toolCall: toolCall(params.toolCall) }) } });
+        const asked = { ...params, toolCall: toolCall(params.toolCall) };
+        // CodeHub fork: what the rules refuse may still go to the approver, which can take minutes (a person).
+        approve(turn, asked, permission(turn, asked)).then(
+          (outcome) => send({ id, result: { outcome } }),
+          () => send({ id, result: { outcome: { outcome: "cancelled" } } }),
+        );
       } else send({ id, error: { code: -32601, message: "不支持这个方法" } });
     } else if (pending.has(incoming.id)) {
       const request = pending.get(incoming.id)!;
@@ -171,7 +211,14 @@ export async function bridge(turn: Turn) {
     // end_turn with nothing said is not a turn that stopped early: an agent whose model refused answers this way, and the
     // old reason quoted "end_turn" back as if it had failed, leaving no cause to look for.
     if (!text.trim()) throw new Error("ACP 说这一轮结束了，但没有回文字");
-    console.log(JSON.stringify({ session, text, finished: true }));
+    // CodeHub fork: what the turn used, as the agent reports it (Antigravity does; tokens only, no price).
+    const used = result.usage;
+    const usage = used && {
+      input: (used.inputTokens ?? 0) + (used.cachedReadTokens ?? 0) + (used.cachedWriteTokens ?? 0),
+      output: (used.outputTokens ?? 0) + (used.thoughtTokens ?? 0),
+      cached: used.cachedReadTokens ?? 0,
+    };
+    console.log(JSON.stringify({ session, text, finished: true, ...(usage && { usage }) }));
   } catch (error) {
     // Now and not on the way out: the agent, or what it left holding its output, can keep this process here for good,
     // and this is what lets the worker end it.

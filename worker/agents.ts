@@ -25,6 +25,9 @@ export type Turn = {
   command?: string[];
   /** The program a built-in plugin starts instead of the one it finds: a wrapper that sets things up and runs it. */
   program?: string;
+  /** CodeHub fork: a command asked about whatever the plugin itself would refuse (ACP agents): it reads the request as
+   * JSON on standard input and answers {"allow": true|false, "message": "..."} on standard output. */
+  approver?: string[];
   contextFile: string;
   folder: string;
 };
