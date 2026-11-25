@@ -10,6 +10,28 @@ import { eachLine } from "../../host/lines.ts";
 import { commandLine } from "../../host/command.ts";
 import { fit } from "../../worker/contract.ts";
 
+/** CodeHub fork: a click that is not on one of the hub's cards (no card number) goes to `clicks` in the channel's
+ * config, a command that reads the click (lark-cli's event line) on its standard input: other cards of the same app
+ * (CodeHub's permission requests) answer this way, since only one listener can hold the app's clicks. Without it such a
+ * click is dropped, as before. Resolves to whether the command ran and ended well. */
+export function passClick(command: unknown, line: string, log: (line: string) => void): Promise<boolean> {
+  if (!Array.isArray(command) || !command.length) return Promise.resolve(false);
+  return new Promise((done) => {
+    const child = spawn(...commandLine(command.map(String)), { stdio: ["pipe", "ignore", "pipe"], windowsHide: true });
+    let said = "";
+    child.stderr!.on("data", (chunk) => (said += chunk));
+    child.on("error", (error) => {
+      log(`the clicks command couldn't run: ${error}`);
+      done(false);
+    });
+    child.on("close", (code) => {
+      if (code !== 0) log(`the clicks command ended with ${code}: ${said.trim().slice(0, 300)}`);
+      done(code === 0);
+    });
+    child.stdin!.end(line);
+  });
+}
+
 /** Feishu sends these values as JSON in a string, which may be empty. */
 function safeJson(text: unknown): any {
   if (typeof text !== "string" || !text) return null;
@@ -227,7 +249,10 @@ export default async function feishu({ hub, options, log, signal }: ChannelConte
         : words
           ? Number(words[1])
           : null;
-    if (!Number.isInteger(cardId)) return;
+    if (!Number.isInteger(cardId)) {
+      await passClick(options.clicks, line, log);
+      return;
+    }
     const note = typeof form?.note === "string" ? form.note : undefined;
     const given: { choice?: number; by?: string; ref?: string; text?: string } = {
       by: event.operator_id,

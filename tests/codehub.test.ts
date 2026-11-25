@@ -9,6 +9,10 @@ import { rows } from "../kernel/evolve.ts";
 import { parseEvent } from "../protocol/validate.ts";
 import { parseRules } from "../protocol/rules.ts";
 import { checkSchema } from "../protocol/schema.ts";
+import { passClick } from "../plugins/feishu/channel.ts";
+import { mkdtempSync, readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 const SESSION = "dbe337f6-7d6c-4598-8577-4c88ac817909";
 
@@ -107,6 +111,20 @@ test("a receipt's event whose id is taken is not sent on, and the round and the 
   assert.equal(rows(w.view, "events").filter((e) => e.key.startsWith("done-t1")).length, 1);
   const notices = rows(w.view, "cards").filter((c) => c.kind === "notice" && String(c.text).includes("done-t1"));
   assert.equal(notices.length, 1);
+});
+
+test("feishu: a click on no card of the hub's goes to the clicks command on stdin; without one it is dropped", async () => {
+  // 2026-11-25: CodeHub's permission cards have buttons, but the hub's channel holds the app's only click listener.
+  const dir = mkdtempSync(join(tmpdir(), "clicks-"));
+  const out = join(dir, "click.json");
+  const line = '{"action_value":"{\\"permission\\":12,\\"answer\\":\\"y\\"}","operator_id":"ou_me"}';
+  const copy = [process.execPath, "-e", `require("fs").writeFileSync(${JSON.stringify(out)}, require("fs").readFileSync(0))`];
+  const logged: string[] = [];
+  assert.equal(await passClick(copy, line, (l) => logged.push(l)), true);
+  assert.equal(readFileSync(out, "utf8"), line);
+  assert.equal(await passClick(undefined, line, (l) => logged.push(l)), false);
+  assert.equal(await passClick([process.execPath, "-e", "process.exit(3)"], line, (l) => logged.push(l)), false);
+  assert.match(logged.join("\n"), /ended with 3/);
 });
 
 test("rules check: maxHops is 1 to 64, sessionFromEvent a boolean", () => {
