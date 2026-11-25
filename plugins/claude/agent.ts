@@ -81,6 +81,9 @@ export default {
     // Entering a worktree moves the whole transcript under the worktree's project folder (still so on 2.1.317): --resume
     // finds it, but the desktop app, opening the session link from the run's folder, showed only its first message.
     "--disallowedTools=EnterWorktree,ExitWorktree",
+    // CodeHub fork: the rules' own extra arguments for this agent, e.g. a smaller start for a dispatcher (fewer tools,
+    // no skills or MCP servers): every request of a conversation carries that start again.
+    ...(turn.args ?? []),
   ],
   read(stdout, code, stderr) {
     const messages = stdout.split("\n").flatMap((line) => {

@@ -217,6 +217,18 @@ test("ACP out of quota goes on in the same conversation with the next model; out
   assert.equal(toldLines().length, 4);
 });
 
+test("claude: the rules' extra args come last on the command line; none, nothing is added", async () => {
+  // 2026-11-25 (P3.7): Agent0 starts lighter with --tools Read,Grep,Glob and no skills or MCP servers.
+  const claude = (await import("../plugins/claude/agent.ts")).default;
+  const turn = { prompt: "p", session: "s", resume: null, cwd: "/x", access: "read" as const, contextFile: "/c", folder: "/r",
+    program: "claude" };
+  const extra = ["--tools", "Read,Grep,Glob", "--strict-mcp-config"];
+  const withArgs = claude.command({ ...turn, args: extra });
+  assert.deepEqual(withArgs.slice(-3), extra);
+  assert.deepEqual(claude.command(turn).length, withArgs.length - 3);
+  assert.throws(() => parseRules({ ...rules, agents: { ...rules.agents, a: { ...Object.values(rules.agents)[0], args: "x" } } }, 0, "UTC"));
+});
+
 test("rules check: maxHops is 1 to 64, sessionFromEvent a boolean", () => {
   const base = JSON.parse(JSON.stringify({
     timezone: "UTC",

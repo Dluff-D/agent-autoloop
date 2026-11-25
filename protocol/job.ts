@@ -20,6 +20,8 @@ export type Job = {
     fallbackModels?: string[];
     /** CodeHub fork: see Turn.onQuota. */
     onQuota?: string[];
+    /** CodeHub fork: see Turn.args. */
+    args?: string[];
     timeout?: number;
   };
   session: string | null;

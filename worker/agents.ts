@@ -33,6 +33,8 @@ export type Turn = {
   fallbackModels?: string[];
   /** CodeHub fork: a command told when a model of this ACP agent is out of quota (JSON on standard input). */
   onQuota?: string[];
+  /** CodeHub fork: extra command-line arguments the plugin adds for this agent (Claude Code). */
+  args?: string[];
   contextFile: string;
   folder: string;
 };
