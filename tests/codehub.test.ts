@@ -217,6 +217,41 @@ test("ACP out of quota goes on in the same conversation with the next model; out
   assert.equal(toldLines().length, 4);
 });
 
+test("ACP asks a turn that ended with nothing said to go on, in the same conversation, at most twice", async () => {
+  // 2026-11-27 (run 119): Gemini ended a turn after one command with nothing said; the retry waited 5 minutes.
+  const dir = mkdtempSync(join(tmpdir(), "nudge-"));
+  const agent = (silent: number) => {
+    const file = join(dir, `silent-${silent}.mjs`);
+    writeFileSync(
+      file,
+      `import readline from 'node:readline';
+const asked = [];
+const send = (x) => process.stdout.write(JSON.stringify({ jsonrpc: '2.0', ...x }) + '\\n');
+readline.createInterface({ input: process.stdin }).on('line', (line) => { const m = JSON.parse(line); if (m.id === undefined) return;
+  if (m.method === 'initialize') send({ id: m.id, result: { protocolVersion: 1, agentCapabilities: {} } });
+  if (m.method === 'session/new') send({ id: m.id, result: { sessionId: 's1' } });
+  if (m.method === 'session/prompt') { asked.push(m.params.prompt[0].text);
+    if (asked.length > ${silent}) send({ method: 'session/update', params: { sessionId: 's1', update: { sessionUpdate: 'agent_message_chunk', messageId: 'm' + asked.length, content: { type: 'text', text: '做完了；第 ' + asked.length + ' 次提示：' + asked.at(-1).slice(0, 20) } } } });
+    send({ id: m.id, result: { stopReason: 'end_turn', usage: { inputTokens: 10, outputTokens: 1 } } }); }
+});`,
+    );
+    return file;
+  };
+  const lastOf = (out: string) =>
+    out.trim().split("\n").map((l) => JSON.parse(l)).reduce((a, b) => ({ ...a, ...b }), {});
+  const turn = (silent: number) =>
+    bridgeTurn({ command: [process.execPath, agent(silent)], cwd: dir, prompt: "做这件事", access: "read", resume: null });
+  const once = lastOf(await turn(1));
+  assert.equal(once.error, undefined);
+  assert.match(once.text, /做完了；第 2 次提示：（中控台：你这一轮没写任何文字/);
+  assert.equal(once.session, "s1");
+  assert.deepEqual(once.usage, { input: 20, output: 2, cached: 0 });
+  assert.match(lastOf(await turn(2)).text, /第 3 次提示/);
+  const never = lastOf(await turn(3));
+  assert.match(never.error, /没有回文字/);
+  assert.match(lastOf(await turn(0)).text, /第 1 次提示：做这件事/);
+});
+
 test("claude: the rules' extra args come last on the command line; none, nothing is added", async () => {
   // 2026-11-25 (P3.7): Agent0 starts lighter with --tools Read,Grep,Glob and no skills or MCP servers.
   const claude = (await import("../plugins/claude/agent.ts")).default;

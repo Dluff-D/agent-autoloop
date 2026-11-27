@@ -48,6 +48,10 @@ export const takeOver = (prompt: string, from: string | undefined, to: string) =
   `（中控台：${from ?? "上一个模型"} 的额度用完了，这一轮没做成；现在换成 ${to} 接着做。请照下面的任务说明把这一轮做完，` +
   `汇报里写一句"这一轮由 ${to} 完成（${from ?? "上一个模型"} 额度用完）"。）\n\n${prompt}`;
 
+/** CodeHub fork: how often a turn that ended with nothing said is asked to go on, and what it is told. */
+export const NUDGES = 2;
+export const NUDGE = "（中控台：你这一轮没写任何文字就结束了。请接着把任务说明里的事做完，做完后按任务说明写汇报。）";
+
 const isLink = (file: string) => {
   try {
     return lstatSync(file).isSymbolicLink();
@@ -263,6 +267,15 @@ export async function bridge(turn: Turn) {
       result = await rpc("session/prompt", { sessionId: session, prompt: [{ type: "text", text: takeOver(turn.prompt, model, to) }] });
       if (result.usage) spent.push(result.usage);
       model = to;
+    }
+    // CodeHub fork: Gemini sometimes ends a turn after a tool call with nothing said (2026-11-27, run 119). Asked at once
+    // in the same conversation, it goes on; failing instead waited out the hub's 5-minute retry backoff.
+    for (let nudge = 1; nudge <= NUDGES && result.stopReason === "end_turn" && !text.trim(); nudge++) {
+      console.error(`${model ?? "the agent"} ended the turn with nothing said; asking it to go on (${nudge}/${NUDGES})`);
+      message = undefined;
+      boundary = false;
+      result = await rpc("session/prompt", { sessionId: session, prompt: [{ type: "text", text: NUDGE }] });
+      if (result.usage) spent.push(result.usage);
     }
     const limited = result.stopReason === "end_turn" ? quotaOf(text) : null;
     if (limited) {
